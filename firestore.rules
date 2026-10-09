@@ -1,0 +1,39 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+
+    match /jobs/{jobId} {
+      // Only published jobs are public.
+      allow read: if resource.data.status == 'published';
+
+      // Signed-in users can submit jobs, but cannot publish them directly.
+      allow create: if signedIn()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 1
+        && request.resource.data.title.size() <= 100
+        && request.resource.data.company is string
+        && request.resource.data.company.size() <= 120
+        && request.resource.data.description is string
+        && request.resource.data.description.size() <= 3000;
+
+      // Owner can edit/remove own pending post only.
+      allow update: if signedIn()
+        && resource.data.createdBy == request.auth.uid
+        && resource.data.status == 'pending'
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.status == 'pending';
+
+      allow delete: if signedIn()
+        && resource.data.createdBy == request.auth.uid
+        && resource.data.status == 'pending';
+    }
+
+    match /users/{userId} {
+      allow read, create, update: if signedIn() && request.auth.uid == userId;
+      allow delete: if false;
+    }
+  }
+}
